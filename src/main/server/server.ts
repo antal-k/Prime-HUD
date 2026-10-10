@@ -16,9 +16,15 @@ import teamRoutes from './domains/teams/team.routes'
 import createHudRouter from './domains/huds/hud.routes'
 import settingsRoutes from './domains/settings/settings.routes'
 import spectatorRoutes from './domains/spectator/spectator.routes'
+import { primecamRouter, hudCameraRouter } from './domains/primecam/primecam.routes'
 import { uploadsPath } from './utils/multer'
 import { getHudsDir, getBuiltinHudDir } from '../paths'
 import { signedHudMiddleware } from './middleware/signedHudMiddleware'
+import {
+  primecamHudMiddleware,
+  serveHudCameraScript,
+  HUD_CAMERA_SCRIPT_PATH
+} from './middleware/primecamHudMiddleware'
 
 // Track the currently active HUD id so the socket register handler can look up correct HUD
 let activeHudId: string | null = null
@@ -44,6 +50,9 @@ export const io = new Server(httpServer, {
 })
 
 app.use(express.json())
+// HUD pages get the PrimeCam camera script
+app.use(primecamHudMiddleware)
+app.get(HUD_CAMERA_SCRIPT_PATH, serveHudCameraScript)
 // Middleware to handle signed HUD files (decode JWT before serving)
 app.use(signedHudMiddleware)
 // The default mount must come first so it takes priority over the user huds folder
@@ -57,6 +66,8 @@ app.use('/api/players', playerRoutes)
 app.use('/api/match', createMatchRouter(io))
 app.use('/api/settings', settingsRoutes)
 app.use('/api/spectator', spectatorRoutes)
+app.use('/api/primecam', primecamRouter)
+app.use('/api/camera', hudCameraRouter)
 
 setupSockets(io)
 

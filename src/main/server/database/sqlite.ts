@@ -130,6 +130,12 @@ async function initializeTables() {
       )
     `)
 
+    // PrimeCam camera: empty follows the player's Steam ID, 'none', or 'sender:<id>'
+    const playerColumns: { name: string }[] = await dbAll('PRAGMA table_info(players)')
+    if (!playerColumns.some((c) => c.name === 'camera')) {
+      await dbRun('ALTER TABLE players ADD COLUMN camera TEXT')
+    }
+
     // Ensure steamid uniqueness but allow nulls
     await dbRun(
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_players_steamid ON players(steamid) WHERE steamid IS NOT NULL AND steamid != ''`

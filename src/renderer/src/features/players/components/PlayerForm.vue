@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onMounted } from 'vue';
 import type { SelectOption } from '@renderer/components/base/BaseSelect.vue';
 import BaseInput from '@renderer/components/base/BaseInput.vue';
 import BaseSelect from '@renderer/components/base/BaseSelect.vue';
 import BaseCheckbox from '@renderer/components/base/BaseCheckbox.vue';
 import BaseButton from '@renderer/components/base/BaseButton.vue';
+import BaseBadge from '@renderer/components/base/BaseBadge.vue';
 import { countryOptions } from '@renderer/utils/countries';
+import { usePrimeCam } from '@renderer/features/primecam/usePrimeCam';
 
 const props = defineProps<{
   initialData: any;
@@ -40,6 +42,11 @@ const onFileChange = (e: Event) => {
     avatarPreview.value = URL.createObjectURL(target.files[0]);
   }
 };
+
+// --- PrimeCam ---
+const primecam = usePrimeCam();
+onMounted(primecam.fetchCameras);
+const cameraState = computed(() => primecam.cameraState(form.value.steamid, form.value.camera));
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const handleSubmit = () => { emit('submit', form.value, avatarFile.value); };
@@ -118,6 +125,23 @@ const handleSubmit = () => { emit('submit', form.value, avatarFile.value); };
         :searchable="true"
         size="md"
       />
+    </div>
+
+    <!-- PrimeCam camera -->
+    <div v-if="primecam.configured.value" class="space-y-1.5">
+      <BaseSelect
+        v-model="form.camera"
+        label="Camera (PrimeCam)"
+        :options="primecam.cameraOptions.value"
+        hint="Automatic shows the machine this player's Steam account is logged in on."
+        size="md"
+      />
+      <div class="flex items-center gap-2 text-xs text-zinc-500">
+        Now:
+        <BaseBadge v-if="cameraState === 'live'" variant="emerald">Live</BaseBadge>
+        <BaseBadge v-else-if="cameraState === 'off'">Off</BaseBadge>
+        <BaseBadge v-else variant="amber">No stream</BaseBadge>
+      </div>
     </div>
 
     <!-- Coach toggle -->

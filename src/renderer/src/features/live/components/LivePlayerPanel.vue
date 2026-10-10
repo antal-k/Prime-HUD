@@ -60,6 +60,8 @@ const sideLabel = computed(() => props.side === 'CT' ? 'CT Players' : 'T Players
             {{ player.name }}
             <BaseBadge v-if="player.isCoach" variant="red">Coach</BaseBadge>
             <BaseBadge v-else-if="player.inDB" variant="emerald">In DB</BaseBadge>
+            <BaseBadge v-if="player.camera === 'live'" variant="blue">Cam live</BaseBadge>
+            <BaseBadge v-else-if="player.camera === 'offline'" variant="amber">No cam</BaseBadge>
           </div>
           <div class="text-xs text-zinc-400 mt-1">Kills: {{ player.stats?.kills || 0 }} - Deaths: {{ player.stats?.deaths || 0 }}</div>
         </div>

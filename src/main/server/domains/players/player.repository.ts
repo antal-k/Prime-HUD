@@ -15,6 +15,7 @@ export class PlayerRepository {
       steamid: row.steamid || '',
       team: row.team || null,
       isCoach: row.isCoach === 1,
+      camera: row.camera || '',
       extra: row.extra ? JSON.parse(row.extra) : {}
     }
   }
@@ -51,8 +52,8 @@ export class PlayerRepository {
     await dbRun(
       `
       INSERT INTO players (
-        _id, firstName, lastName, username, avatar, country, steamid, team, isCoach, extra
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        _id, firstName, lastName, username, avatar, country, steamid, team, isCoach, camera, extra
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         _id,
@@ -64,6 +65,7 @@ export class PlayerRepository {
         data.steamid || null,
         data.team || null,
         data.isCoach ? 1 : 0,
+        data.camera || null,
         data.extra ? JSON.stringify(data.extra) : null
       ]
     )
@@ -90,6 +92,7 @@ export class PlayerRepository {
         steamid = ?, 
         team = ?, 
         isCoach = ?,
+        camera = ?,
         extra = ?
       WHERE _id = ?
     `,
@@ -102,6 +105,7 @@ export class PlayerRepository {
         updated.steamid || null,
         updated.team || null,
         updated.isCoach ? 1 : 0,
+        updated.camera || null,
         updated.extra ? JSON.stringify(updated.extra) : null,
         id
       ]

@@ -3,10 +3,12 @@ import { API_URL } from '../../../index'
 
 export interface AppSettings {
   autoSwitchSides: boolean
+  primecamUrl: string
+  primecamKey: string
 }
 
 export function useSettings() {
-  const settings = ref<AppSettings>({ autoSwitchSides: true })
+  const settings = ref<AppSettings>({ autoSwitchSides: true, primecamUrl: '', primecamKey: '' })
   const isLoading = ref(false)
   const isSaving = ref(false)
 

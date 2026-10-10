@@ -9,7 +9,7 @@ import { usePlayersView } from '../features/players/composables/usePlayersView';
 import { API_URL } from '../index';
 
 const {
-  players, availableTeams, isPlayersLoading, sortedPlayers, teamMap, tableHeaders,
+  players, availableTeams, isPlayersLoading, sortedPlayers, teamMap, tableHeaders, cameraState,
   sortKey, sortDir, handleSort,
   selectedPlayerIds, handleSelectionChange, handleDeleteSelected, handleDeleteAll,
   isModalOpen, isEditing, formData, handleSave, openCreateModal, openEditModal,
@@ -70,6 +70,14 @@ const baseUrl = API_URL.replace('/api', '');
           </div>
         </div>
         <span v-else class="text-zinc-600 italic text-xs">No team</span>
+      </template>
+
+      <template #cell-camera="{ item }">
+        <template v-if="!item.isCoach">
+          <BaseBadge v-if="cameraState(item.steamid, item.camera) === 'live'" variant="emerald">Live</BaseBadge>
+          <BaseBadge v-else-if="cameraState(item.steamid, item.camera) === 'off'">Off</BaseBadge>
+          <BaseBadge v-else variant="amber">No stream</BaseBadge>
+        </template>
       </template>
     </BaseTable>
 

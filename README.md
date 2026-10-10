@@ -161,6 +161,20 @@ The **Live** tab shows the current CS2 game state in real time. When a match is 
 
 ---
 
+## Player Cameras (PrimeCam)
+
+The HUD can show the observed player's camera from a PrimeCam server in place of their avatar.
+
+1. Open **Settings** and fill in **Player Cameras (PrimeCam)**: the server's address and its view key (the `key=` part of an OBS stream URL). **Save & Check** shows how many cameras are live.
+2. Every player gets the camera of the PC their Steam account is logged in on (**Automatic**). To override that, pick a camera, or **No camera**, in the player's **Camera (PrimeCam)** field.
+3. The **Players** table and the **Live** tab show whose camera is live.
+
+While a player's camera is offline, the HUD shows their avatar. `Alt + C` hides or shows the camera in the default HUD.
+
+Open the HUD at `http://localhost:1349/...` (as the manager lists it), not at a LAN address: browsers only decode the streams on secure origins, and `localhost` counts as one.
+
+---
+
 ## Spectator Binds Tool
 
 The **Spectator Binds** tool lets observers assign specific players to fixed observer slots (1–10) and push those binds directly to CS2 via its telnet interface.

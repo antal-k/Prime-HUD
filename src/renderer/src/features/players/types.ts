@@ -8,6 +8,7 @@ export interface Player {
   steamid: string;
   team: string; // ID of the team
   isCoach: boolean;
+  camera: string;
   extra: Record<string, string>;
 }
 

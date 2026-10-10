@@ -4,6 +4,7 @@ import { API_URL } from '../../../index'
 import type { CSGORaw } from 'csgogsi'
 import { usePlayers } from '../../players/composables/usePlayers'
 import { useTeams } from '../../teams/composables/useTeams'
+import { usePrimeCam, type CameraState } from '../../primecam/usePrimeCam'
 
 export interface GsiPlayer {
   steamid: string
@@ -12,7 +13,11 @@ export interface GsiPlayer {
   stats: any
   inDB: boolean
   isCoach: boolean
+  /** PrimeCam camera; null when no PrimeCam server is set */
+  camera: CameraState | null
 }
+
+const CAMERA_POLL_MS = 5000
 
 const getEmptyForm = () => ({
   firstName: '',
@@ -22,12 +27,15 @@ const getEmptyForm = () => ({
   country: '',
   steamid: '',
   team: '',
+  camera: '',
   extra: {}
 })
 
 export function useLiveView() {
   const { players: dbPlayers, fetchPlayers, savePlayer } = usePlayers()
   const { teams: availableTeams, fetchTeams } = useTeams()
+  const primecam = usePrimeCam()
+  let cameraTimer: ReturnType<typeof setInterval> | null = null
 
   const socket = ref<Socket | null>(null)
   const isConnected = ref(false)
@@ -36,14 +44,21 @@ export function useLiveView() {
   // --- GSI Parsing ---
   const allPlayersList = computed((): GsiPlayer[] => {
     if (!gameState.value?.allplayers) return []
-    return Object.entries(gameState.value.allplayers).map(([steamid, p]: [string, any]) => ({
-      steamid,
-      name: p.name,
-      side: p.team,
-      stats: p.match_stats,
-      inDB: dbPlayers.value.some((db) => db.steamid === steamid),
-      isCoach: dbPlayers.value.some((db) => db.steamid === steamid && db.isCoach)
-    }))
+    return Object.entries(gameState.value.allplayers).map(([steamid, p]: [string, any]) => {
+      const db = dbPlayers.value.find((d) => d.steamid === steamid)
+      return {
+        steamid,
+        name: p.name,
+        side: p.team,
+        stats: p.match_stats,
+        inDB: !!db,
+        isCoach: !!db?.isCoach,
+        camera:
+          primecam.configured.value && !db?.isCoach
+            ? primecam.cameraState(steamid, db?.camera)
+            : null
+      }
+    })
   })
 
   const ctPlayers = computed(() => allPlayersList.value.filter((p) => p.side === 'CT'))
@@ -124,7 +139,8 @@ export function useLiveView() {
   }
 
   onMounted(async () => {
-    await Promise.all([fetchPlayers(), fetchTeams()])
+    await Promise.all([fetchPlayers(), fetchTeams(), primecam.fetchCameras()])
+    cameraTimer = setInterval(primecam.fetchCameras, CAMERA_POLL_MS)
     const socketUrl = API_URL.replace('/api', '')
     socket.value = io(socketUrl)
     socket.value.on('connect', () => {
@@ -139,6 +155,7 @@ export function useLiveView() {
   })
 
   onUnmounted(() => {
+    if (cameraTimer) clearInterval(cameraTimer)
     if (socket.value) socket.value.disconnect()
   })
 

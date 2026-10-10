@@ -8,6 +8,8 @@ export interface Player {
   steamid: string;
   team: string;
   isCoach: boolean;
+  /** PrimeCam camera: '' follows the Steam ID, 'none', or 'sender:<id>' */
+  camera: string;
   extra: Record<string, string>;
 }
 

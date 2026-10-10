@@ -2,6 +2,7 @@ import { ref, computed, onMounted } from 'vue'
 import { usePlayers } from './usePlayers'
 import { useTeams } from '../../teams/composables/useTeams'
 import { usePlayerExcel } from '../../../composables/useExcel'
+import { usePrimeCam } from '../../primecam/usePrimeCam'
 
 const TABLE_HEADERS = [
   { key: 'avatar', label: 'Photo' },
@@ -20,6 +21,7 @@ const getEmptyForm = () => ({
   steamid: '',
   team: '',
   isCoach: false,
+  camera: '',
   extra: {}
 })
 
@@ -34,6 +36,13 @@ export function usePlayersView() {
   } = usePlayers()
   const { teams: availableTeams, fetchTeams } = useTeams()
   const { exportPlayers, importPlayers } = usePlayerExcel(fetchPlayers)
+  const primecam = usePrimeCam()
+
+  const tableHeaders = computed(() =>
+    primecam.configured.value
+      ? [...TABLE_HEADERS, { key: 'camera', label: 'Camera' }]
+      : TABLE_HEADERS
+  )
 
   // --- Sort ---
   const sortKey = ref('username')
@@ -98,6 +107,7 @@ export function usePlayersView() {
   const handleSave = async (payload: any, file: File | null) => {
     await savePlayer(payload, isEditing.value ? editingId.value : null, file)
     isModalOpen.value = false
+    primecam.fetchCameras()
   }
 
   const openCreateModal = () => {
@@ -117,6 +127,7 @@ export function usePlayersView() {
   onMounted(() => {
     fetchPlayers()
     fetchTeams()
+    primecam.fetchCameras()
   })
 
   return {
@@ -126,7 +137,8 @@ export function usePlayersView() {
     isPlayersLoading,
     sortedPlayers,
     teamMap,
-    tableHeaders: TABLE_HEADERS,
+    tableHeaders,
+    cameraState: primecam.cameraState,
     // Sort
     sortKey,
     sortDir,

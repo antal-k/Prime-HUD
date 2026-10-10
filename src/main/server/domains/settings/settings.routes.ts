@@ -7,12 +7,18 @@ export interface AppSettings {
   autoSwitchSides: boolean;
   telnetHost: string;
   telnetPort: number;
+  /** PrimeCam studio server, e.g. `https://prime.example.com` */
+  primecamUrl: string;
+  /** The server's view key (the `?key=` of its OBS URLs) */
+  primecamKey: string;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   autoSwitchSides: true,
   telnetHost: '127.0.0.1',
   telnetPort: 2020,
+  primecamUrl: '',
+  primecamKey: '',
 };
 
 // Load all settings from the DB and return as a typed object
@@ -23,6 +29,8 @@ export const getSettings = async (): Promise<AppSettings> => {
     autoSwitchSides: map.autoSwitchSides !== undefined ? map.autoSwitchSides === 'true' : DEFAULT_SETTINGS.autoSwitchSides,
     telnetHost: map.telnetHost ?? DEFAULT_SETTINGS.telnetHost,
     telnetPort: map.telnetPort !== undefined ? Number(map.telnetPort) : DEFAULT_SETTINGS.telnetPort,
+    primecamUrl: map.primecamUrl ?? DEFAULT_SETTINGS.primecamUrl,
+    primecamKey: map.primecamKey ?? DEFAULT_SETTINGS.primecamKey,
   };
 };
 
