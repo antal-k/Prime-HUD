@@ -13179,6 +13179,36 @@ const activeWeapon = (player) => {
     const weapon = player.weapons.find((w) => w.state === "active");
     return weapon ? weapon.name : "";
   },
+  // An HE explodes 1.62 s after the throw; the projectile then lingers ~5 s in GSI.
+  heJustExploded = (grenade, victim) =>
+    grenade.lifetime >= 1.55 &&
+    grenade.lifetime <= 1.95 &&
+    Math.hypot(
+      grenade.position[0] - victim.position[0],
+      grenade.position[1] - victim.position[1],
+      grenade.position[2] - victim.position[2],
+    ) < 400,
+  // By the time a grenade or fire kills, the killer is usually holding something else.
+  grenadeKillWeapon = (last, current, killer, victimBefore) => {
+    if (!victimBefore) return null;
+    const owned = (state, type) =>
+      state.grenades.filter(
+        (g) => g.owner === killer.steamid && g.type === type,
+      );
+    const live = new Set(current.grenades.map((g) => g.id));
+    if (
+      owned(current, "frag").some((g) => heJustExploded(g, victimBefore)) ||
+      owned(last, "frag").some((g) => !live.has(g.id) && g.lifetime > 1.3)
+    )
+      return "hegrenade";
+    if (
+      victimBefore.state.burning > 0 &&
+      victimBefore.state.health <= 10 &&
+      owned(current, "inferno").length
+    )
+      return "inferno";
+    return null;
+  },
   emitGsiKills = (last, current) => {
     if (!last || last === current || !current.map) return;
     if (current.map.phase === "warmup") return;
@@ -13218,7 +13248,14 @@ const activeWeapon = (player) => {
         headshot:
           !!kill &&
           kill.player.state.round_killhs > kill.prev.state.round_killhs,
-        weapon: kill ? activeWeapon(kill.prev) : "",
+        weapon: kill
+          ? grenadeKillWeapon(
+              last,
+              current,
+              kill.player,
+              before.get(victim.steamid),
+            ) || activeWeapon(kill.prev)
+          : "",
         wallbang: false,
         attackerblind: false,
         thrusmoke: false,

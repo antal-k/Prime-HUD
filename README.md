@@ -86,7 +86,7 @@ CS2 draws its own killfeed in that corner, so hide it in the observer PC's CS2 c
 cl_drawhud_force_deathnotices -1
 ```
 
-The HUD builds its killfeed from game state data: killer, victim, assist, weapon and headshot. Wallbang, no-scope, through-smoke and flash-assist icons would need HLAE, which the manager does not use.
+The HUD builds its killfeed from game state data: killer, victim, assist, weapon (HE and molotov kills included) and headshot. Wallbang, no-scope, through-smoke and flash-assist icons would need HLAE, which the manager does not use.
 
 ### Panel controls
 
