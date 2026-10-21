@@ -16,3 +16,4 @@ playwright-report/
 .env.test
 
 todo.txt
+.worktrees/
