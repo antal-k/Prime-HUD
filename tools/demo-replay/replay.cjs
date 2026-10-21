@@ -5,7 +5,11 @@
 //   --gsi URL:         POST the raw frames to a running manager instead,
 //                      e.g. --gsi http://localhost:23415/cs2/input
 //   --quick:           no screenshots except the end of the last round (full-match checks).
-// Usage: node replay.cjs <frames.jsonl> [--out DIR] [--rounds 3,5,12-14] [--gsi URL] [--speed 1] [--video] [--quick]
+//   --cams:            harness plays PrimeCam streams like the manager does (PRIMECAM_URL and
+//                      PRIMECAM_VIEW_KEY) and checks the observed player's camera every second.
+//   --players:         print the demo's players as `STEAM64 NAME` lines and exit (for the
+//                      PrimeCam fleet simulator, which streams a test camera per player).
+// Usage: node replay.cjs <frames.jsonl> [--out DIR] [--rounds 3,5,12-14] [--gsi URL] [--speed 1] [--video] [--quick] [--cams]
 //
 // Watch a demo in the manager's HUD (start the manager and open the HUD first):
 //   node tools/demo-replay/replay.cjs .worktrees/demo/cache-full.jsonl --gsi http://localhost:23415/cs2/input
@@ -27,6 +31,7 @@ const GSI_URL = opt('gsi', null)
 const SPEED = Number(opt('speed', 1))
 const VIDEO = argv.includes('--video')
 const QUICK = argv.includes('--quick')
+const CAMS = argv.includes('--cams')
 const meta = JSON.parse(fs.readFileSync(FRAMES + '.meta.json', 'utf8'))
 const TICK = meta.tickrate
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -154,6 +159,41 @@ async function harness() {
   }
 
   const app = express()
+  // The manager's PrimeCam part (src/main/server/domains/primecam): camera API and player script.
+  let lastGsi = null
+  const primecam = CAMS && primecamConfig()
+  app.get('/api/camera', (_, res) => {
+    if (!primecam || !lastGsi)
+      return res.json({ uuid: 'primecam', availablePlayers: [], primecam: null })
+    const steamids = Object.keys(lastGsi.allplayers).filter((id) => /^\d{17}$/.test(id))
+    const streams = {}
+    for (const id of steamids) {
+      const check = `${primecam.base}/stream/${id}/ws?key=${encodeURIComponent(primecam.key)}`
+      streams[id] = { ws: check.replace(/^http/, 'ws'), check }
+    }
+    res.json({
+      uuid: 'primecam',
+      availablePlayers: steamids.map((steamid) => ({
+        steamid,
+        label: lastGsi.allplayers[steamid].name
+      })),
+      primecam: { player: `${primecam.base}/assets/player.js`, streams }
+    })
+  })
+  if (primecam) {
+    app.get('/primecam/hud-camera.js', (_, res) =>
+      res.type('js').sendFile(path.join(REPO, 'src/main/server/domains/primecam/hud-camera.js'))
+    )
+    app.get(['/huds/default/', '/huds/default/index.html'], (_, res) =>
+      res
+        .type('html')
+        .send(
+          fs
+            .readFileSync(path.join(HUD_DIR, 'index.html'), 'utf8')
+            .replace(/<\/head>/i, '<script src="/primecam/hud-camera.js"></script></head>')
+        )
+    )
+  }
   // Probe: record every kill the HUD emits (with the weapon it picked), logic untouched.
   app.get('/huds/default/assets/index.js', (_, res) => {
     const src = fs.readFileSync(path.join(HUD_DIR, 'assets/index.js'), 'utf8')
@@ -191,7 +231,6 @@ async function harness() {
     )
   })
   app.get('/api/players/avatar/steamid/:id', (_, res) => res.json({ custom: '', steam: '' }))
-  app.get('/api/camera', (_, res) => res.json({ availablePlayers: [], uuid: '' }))
   app.use('/api', (_, res) => res.json(null))
   const server = http.createServer(app)
   const io = new Server(server, { cors: { origin: '*' } })
@@ -217,6 +256,10 @@ async function harness() {
         p.observer_slot = p.observer_slot + 1 === 10 ? 0 : p.observer_slot + 1
     }
     return gsi
+  }
+  const send = (frame) => {
+    lastGsi = managerTransform(frameOf(frame))
+    io.to('huds').emit('update', lastGsi)
   }
 
   await new Promise((r) => server.listen(0, r))
@@ -271,6 +314,44 @@ async function harness() {
 
   const emittedKills = () => pages.hud.evaluate(() => window.__kills || [])
 
+  // The HUD has a <video> per player and shows the observed player's.
+  const camWatch = { observed: null, shots: 0, samples: [] }
+  const checkCam = (observed) => {
+    const name = lastGsi.allplayers[observed] && lastGsi.allplayers[observed].name
+    return pages.hud
+      .evaluate(() => {
+        const v = [...document.querySelectorAll('#cameras-container video')].find(
+          (e) => e.style.opacity === '1'
+        )
+        return v && { steamid: v.id.split('-')[2], playing: !!v.srcObject && v.videoWidth > 0 }
+      })
+      .then((cam) => ({ observed, name, cam: cam || null }))
+      .catch(() => null)
+  }
+  const shotCam = async (name) => {
+    const clip = await pages.hud.evaluate(() => {
+      const boxes = ['.observed', '.observed .avatar_container']
+        .map((s) => document.querySelector(s))
+        .filter(Boolean)
+        .map((e) => e.getBoundingClientRect())
+      if (!boxes.length) return null
+      const x = Math.min(...boxes.map((b) => b.left))
+      const y = Math.min(...boxes.map((b) => b.top))
+      return {
+        x,
+        y,
+        width: Math.max(...boxes.map((b) => b.right)) - x,
+        height: Math.max(...boxes.map((b) => b.bottom)) - y
+      }
+    })
+    if (clip)
+      shots.push(
+        pages.hud
+          .screenshot({ path: path.join(OUT, `${name}.png`), clip })
+          .catch((e) => log('shot failed', name, e.message))
+      )
+  }
+
   const report = { rounds: [] }
   let lastRound = null
   await load(false)
@@ -287,7 +368,7 @@ async function harness() {
     if (pause.length) {
       const mid = pause.slice(Math.floor(pause.length / 2), Math.floor(pause.length / 2) + 64)
       for (const f of mid) {
-        io.to('huds').emit('update', managerTransform(frameOf(f)))
+        send(f)
         await sleep(((meta.step / TICK) * 1000) / SPEED)
       }
       const label = /"phase":"(\w+)"/.exec(mid[0].line.split('"phase_countdowns":')[1])[1]
@@ -358,10 +439,27 @@ async function harness() {
     const interval = ((meta.step / TICK) * 1000) / SPEED
     const t0 = performance.now()
     let ci = 0
+    let nextCamCheck = 0
     for (let i = 0; i < window.length; i++) {
       const wait = t0 + i * interval - performance.now()
       if (wait > 0) await sleep(wait)
-      io.to('huds').emit('update', managerTransform(frameOf(window[i])))
+      send(window[i])
+      if (primecam) {
+        const observed = lastGsi.player && lastGsi.player.steamid
+        if (observed !== camWatch.observed) {
+          camWatch.observed = observed
+          if (camWatch.shots < 16 && lastGsi.allplayers[observed])
+            setTimeout(
+              shotCam,
+              1500,
+              `cam${String(++camWatch.shots).padStart(2, '0')}-r${n}-${lastGsi.allplayers[observed].name}`
+            )
+        }
+        if (performance.now() >= nextCamCheck) {
+          nextCamCheck = performance.now() + 1000
+          camWatch.samples.push(checkCam(observed))
+        }
+      }
       while (ci < captures.length && captures[ci].tick <= window[i].tick) {
         const c = captures[ci++]
         for (const p of c.pages) shot(p, `r${n}-${c.name}`)
@@ -370,7 +468,7 @@ async function harness() {
     await Promise.all(shots)
     if (last && r.num === meta.rounds.length) {
       for (let i = 0; i < 40; i++) {
-        io.to('huds').emit('update', managerTransform(frameOf(window[window.length - 1])))
+        send(window[window.length - 1])
         await sleep(250)
       }
       await shot('hud', 'gameover')
@@ -416,6 +514,33 @@ async function harness() {
   }
 
   fs.writeFileSync(path.join(OUT, 'killfeed-report.json'), JSON.stringify(report, null, 1))
+  if (primecam) {
+    await Promise.all(shots)
+    const samples = (await Promise.all(camWatch.samples)).filter((s) => s && s.name)
+    const players = {}
+    for (const s of samples) {
+      const p = (players[s.name] = players[s.name] || {
+        observed: 0,
+        playing: 0,
+        wrong: 0,
+        none: 0
+      })
+      p.observed++
+      if (!s.cam) p.none++
+      else if (s.cam.steamid !== s.observed) p.wrong++
+      else if (s.cam.playing) p.playing++
+    }
+    const total = (k) => Object.values(players).reduce((sum, p) => sum + p[k], 0)
+    log(
+      `cams: the observed player's camera played in ${total('playing')}/${samples.length} checks (wrong camera ${total('wrong')}, no camera element ${total('none')})`
+    )
+    for (const [name, p] of Object.entries(players))
+      log(`  ${name}: ${p.playing}/${p.observed}${p.wrong ? `, wrong ${p.wrong}` : ''}`)
+    fs.writeFileSync(
+      path.join(OUT, 'cams-report.json'),
+      JSON.stringify({ players, samples }, null, 1)
+    )
+  }
   await hudCtx.close()
   await radarCtx.close()
   await browser.close()
@@ -423,9 +548,27 @@ async function harness() {
   server.close()
 }
 
-loadFrames()
-  .then(() => (GSI_URL ? feedManager() : harness()))
-  .catch((e) => {
-    console.error(e)
-    process.exitCode = 1
-  })
+function primecamConfig() {
+  const url = (process.env.PRIMECAM_URL || '').trim()
+  const key = (process.env.PRIMECAM_VIEW_KEY || '').trim()
+  if (!url || !key) throw new Error('--cams needs PRIMECAM_URL and PRIMECAM_VIEW_KEY')
+  return { base: new URL(/^[a-z]+:\/\//i.test(url) ? url : `https://${url}`).origin, key }
+}
+
+async function printPlayers() {
+  const input = fs.createReadStream(FRAMES)
+  const lines = readline.createInterface({ input })
+  const [first] = await new Promise((resolve) => lines.once('line', (l) => resolve([l])))
+  lines.close()
+  input.destroy()
+  for (const [steamid, p] of Object.entries(JSON.parse(first).gsi.allplayers))
+    console.log(`${steamid} ${p.name}`)
+}
+
+;(argv.includes('--players')
+  ? printPlayers()
+  : loadFrames().then(() => (GSI_URL ? feedManager() : harness()))
+).catch((e) => {
+  console.error(e)
+  process.exitCode = 1
+})
