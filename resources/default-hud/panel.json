@@ -34,9 +34,9 @@
         "label": "Sharp corners"
       },
       {
-        "type": "checkbox",
-        "name": "disable_compact_matchbar",
-        "label": "Disable compact matchbar"
+        "type": "text",
+        "name": "sponsor_area_height",
+        "label": "Empty sponsor area, top right (px, default 300)"
       },
       {
         "type": "checkbox",

@@ -1,18 +1,14 @@
 {
-  "name": "JTs Hud",
-  "version": "1.1.0",
-  "author": "twitch.tv/jtmythic",
+  "name": "Prime HUD",
+  "version": "1.2.0",
+  "author": "Prime, based on JTs Hud by twitch.tv/jtmythic",
   "legacy": false,
   "radar": true,
-  "killfeed": false,
+  "killfeed": true,
   "game": "cs2",
   "boltobserv": {
     "css": false,
     "maps": false
   },
-  "variants": [
-    "default",
-    "horizontal",
-    "vertical"
-  ]
+  "variants": ["default", "horizontal", "vertical", "radar"]
 }

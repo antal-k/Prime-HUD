@@ -53,16 +53,40 @@ The hud manager will write the required config file into your CS2 installation a
 ### Launching the default HUD
 
 1. Open the **HUDs** tab.
-2. Find **JTs Hud** and click **Launch**. This launches the main/default variant of the HUD
+2. Find **Prime HUD** and click **Launch**. This launches the main/default variant of the HUD
 3. Press **Copy URL** button to copy the overlay URL and paste it into your broadcasting software (OBS, vMix, etc.) as a **Browser Source**.
 
 ![HUDs View](.github/images/huds.png)
 
+The default HUD is a modified JTs Hud, shipped as plain (unsigned, readable) files in `resources/default-hud`.
+
 ### HUD variants
 
-The default HUD ships with multiple layout variants (e.g. `default`, `horizontal`, `vertical`). Expand the HUD card to see all available variants and launch the one that fits your production layout.
+The default HUD ships with the layout variants `default`, `horizontal` and `vertical`, plus a `radar` view. Expand the HUD card to see all available variants and launch the one that fits your production layout.
 
 ![HUDs Variant](.github/images/hud-varaints.png)
+
+### Radar view (second monitor)
+
+The `radar` variant shows only the minimap, as large as the window allows, on a black background. It is meant for a separate monitor (casters, observer, venue screen).
+
+- Expand **Variants** on the HUD card and click **radar**. It opens in your default browser instead of the overlay, so the running HUD overlay stays open. Drag the window to the second monitor and press `F11`.
+- Or open the URL directly: `http://localhost:1349/huds/default/index.html?variant=radar`
+- From another PC on the network: `http://<manager-PC-IP>:1349/huds/default/index.html?variant=radar&isProd=true` (port 1349 must be allowed through the firewall).
+
+The radar (also the small one in the HUD) shows each player's observer slot number, smokes as grey circles outlined in the thrower's team colour, molotovs, flashes, HEs and the bomb.
+
+### Sponsor area and killfeed
+
+The top-right corner of the default HUD stays empty for sponsor boxes. Set its height in **Panel → Empty sponsor area, top right** (pixels on a 1920×1080 canvas, default 300); the HUD's killfeed starts just below it.
+
+CS2 draws its own killfeed in that corner, so hide it in the observer PC's CS2 console:
+
+```
+cl_drawhud_force_deathnotices -1
+```
+
+The HUD builds its killfeed from game state data: killer, victim, assist, weapon and headshot. Wallbang, no-scope, through-smoke and flash-assist icons would need HLAE, which the manager does not use.
 
 ### Panel controls
 
@@ -85,7 +109,7 @@ These shortcuts are always active while the hud manager is running, regardless o
 
 ### Default HUD Keybinds
 
-When **JTs Hud** overlay is open, the following additional shortcuts become active:
+When the **Prime HUD** overlay is open, the following additional shortcuts become active:
 
 | Shortcut | Action                |
 | -------- | --------------------- |
@@ -128,11 +152,13 @@ Go to **Players** to create and edit player profiles. Each player can have:
 
 You can also bulk-import player rosters from an Excel spreadsheet using the import feature on the Players page.
 
+Avatars should be square and at least 280×280 px (512×512 is a safe choice). The default HUD shows them at 140×140 above the observed player and at 80×80 or 55×55 in the team lists, depending on the variant; non-square images are cropped to the centre. Players without an avatar get a CT/T model, or a silhouette when **Disable team models** is checked in the panel.
+
 ![Players View](.github/images/players.png)
 
 ### Teams
 
-Go to **Teams** to create teams with a name, short name, logo, and country.
+Go to **Teams** to create teams with a name, short name, logo, and country. The default HUD always shows the full team name and does not show team logos.
 
 ![Teams View](.github/images/teams.png)
 

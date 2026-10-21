@@ -9609,6 +9609,7 @@ const Tn = new URLSearchParams(window.location.search),
     Q5 === "horizontal" || Q5 === "vertical" || Q5 === "default"
       ? Q5
       : "default",
+  isRadarView = Q5 === "radar",
   M5 = !Tn.get("isProd"),
   Ra = { apiAddress: M5 ? `http://localhost:${vi}/` : "/" },
   yi = Ra.apiAddress;
@@ -13143,16 +13144,15 @@ zi &&
   });
 const x7 = window.location.href;
 B1.emit("started");
-if (M5)
+if (x7.includes("/huds/")) {
+  const e = x7.substr(x7.indexOf("/huds/") + 6);
+  ((m3.name = e.substr(0, e.lastIndexOf("/"))), (m3.isDev = M5));
+} else
   ((m3.name = (Math.random() * 1e3 + 1)
     .toString(36)
     .replace(/[^a-z]+/g, "")
     .substr(0, 15)),
     (m3.isDev = !0));
-else {
-  const e = x7.substr(x7.indexOf("/huds/") + 6);
-  m3.name = e.substr(0, e.lastIndexOf("/"));
-}
 B1.on("readyToRegister", () => {
   (B1.emit("register", m3.name, M5, "cs2", zi ? "IPC" : "DEFAULT"), Xd());
 });
@@ -13169,8 +13169,66 @@ B1.on("refreshHUD", () => {
   var e;
   (e = window.top) == null || e.location.reload();
 });
+let mirvKillfeed = !1;
 B1.on("update_mirv", (e) => {
-  Q.digestMIRV(e);
+  ((mirvKillfeed = !0), Q.digestMIRV(e));
+});
+// The manager has no HLAE/MIRV feed, so derive kills from GSI stat changes.
+// GSI is sent unthrottled, so simultaneous kills in one update are rare.
+const activeWeapon = (player) => {
+    const weapon = player.weapons.find((w) => w.state === "active");
+    return weapon ? weapon.name : "";
+  },
+  emitGsiKills = (last, current) => {
+    if (!last || last === current || !current.map) return;
+    if (current.map.phase === "warmup") return;
+    const before = new Map(last.players.map((p) => [p.steamid, p])),
+      victims = [],
+      killers = [],
+      assisters = [];
+    for (const player of current.players) {
+      const prev = before.get(player.steamid);
+      if (!prev) continue;
+      if (player.stats.deaths > prev.stats.deaths) victims.push(player);
+      if (player.stats.kills !== prev.stats.kills)
+        killers.push({ player, prev });
+      if (player.stats.assists > prev.stats.assists) assisters.push(player);
+    }
+    for (const victim of victims) {
+      const kill =
+        killers.find(
+          (k) =>
+            k.player.team.side !== victim.team.side &&
+            k.player.stats.kills > k.prev.stats.kills,
+        ) || killers.find((k) => k.player.steamid !== victim.steamid);
+      if (kill) killers.splice(killers.indexOf(kill), 1);
+      const killer = kill ? kill.player : null;
+      Q.emit("kill", {
+        killer: killer || victim,
+        victim,
+        assister:
+          (killer &&
+            assisters.find(
+              (a) =>
+                a.team.side === killer.team.side &&
+                a.steamid !== killer.steamid,
+            )) ||
+          null,
+        flashed: false,
+        headshot:
+          !!kill &&
+          kill.player.state.round_killhs > kill.prev.state.round_killhs,
+        weapon: kill ? activeWeapon(kill.prev) : "",
+        wallbang: false,
+        attackerblind: false,
+        thrusmoke: false,
+        noscope: false,
+        attackerinair: false,
+      });
+    }
+  };
+Q.on("data", (e) => {
+  mirvKillfeed || emitGsiKills(Q.last, e);
 });
 var x6 = { exports: {} },
   n4,
@@ -19324,8 +19382,6 @@ const Jd = ({ observedSteamid: e }) => {
         m.createElement("g", { id: "Layer_1" }),
       ),
     ),
-  uC = "" + new URL("logo_CT_default-98efc38d.png", import.meta.url).href,
-  cC = "" + new URL("logo_T_default-e8ec7778.png", import.meta.url).href,
   Ss = (e) =>
     m.createElement(
       "svg",
@@ -20025,29 +20081,30 @@ const Jd = ({ observedSteamid: e }) => {
       ),
     });
   };
-const x5 = ({ team: e, height: t, width: n }) => {
-    if (!e) return null;
-    let r = "";
-    const { logo: i } = e;
-    return (
-      "_id" in e ? (r = e._id) : "id" in e && e.id && (r = e.id),
-      d.jsx("div", {
-        className: "logo",
-        children: d.jsx("img", {
-          src:
-            i && r
-              ? `${yi}api/teams/logo/${r}`
-              : "side" in e && e.side === "CT"
-                ? uC
-                : cC,
-          width: n,
-          height: t,
-          alt: "Team logo",
-        }),
-      })
-    );
+const fitTextToWidth = (box, label, max, min) => {
+    let size = max;
+    label.style.fontSize = `${size}px`;
+    while (size > min && label.offsetWidth > box.clientWidth - 16)
+      label.style.fontSize = `${--size}px`;
   },
-  W7 = ({ orientation: e, timer: t, team: n, match: r, compact: i }) => {
+  FitText = ({ className, text, max, min }) => {
+    const box = m.useRef(null),
+      label = m.useRef(null);
+    m.useLayoutEffect(() => {
+      const fit = () =>
+        box.current &&
+        label.current &&
+        fitTextToWidth(box.current, label.current, max, min);
+      fit();
+      document.fonts?.ready.then(fit);
+    }, [text, max, min]);
+    return d.jsx("div", {
+      ref: box,
+      className,
+      children: d.jsx("span", { ref: label, children: text }),
+    });
+  },
+  W7 = ({ orientation: e, timer: t, team: n, match: r }) => {
     const [s, o] = m.useState(!1);
     y5(
       "roundEnd",
@@ -20063,7 +20120,7 @@ const x5 = ({ team: e, height: t, width: n }) => {
     const l = (r && Math.floor(Number(r.matchType.substr(-1)) / 2) + 1) || 0;
     return d.jsx(d.Fragment, {
       children: d.jsxs("div", {
-        className: `team ${e} ${n.side || ""} ${i ? "compact" : ""}`,
+        className: `team ${e} ${n.side || ""}`,
         children: [
           d.jsxs("div", {
             className: `score-container ${n.side}`,
@@ -20086,11 +20143,12 @@ const x5 = ({ team: e, height: t, width: n }) => {
               }),
             ],
           }),
-          d.jsx("div", {
+          d.jsx(FitText, {
             className: "team-name",
-            children: (n == null ? void 0 : n.name) || null,
+            text: (n == null ? void 0 : n.name) || "",
+            max: 26,
+            min: 14,
           }),
-          d.jsx(x5, { team: n }),
           d.jsx("div", {
             className: "round-thingy",
             children: d.jsx("div", { className: "inner" }),
@@ -20205,14 +20263,15 @@ const x5 = ({ team: e, height: t, width: n }) => {
           children: d.jsxs("div", {
             className: "win_content",
             children: [
-              d.jsx("div", {
-                className: "team_logo_container",
-                children: d.jsx(x5, { team: e, height: 60, width: 60 }),
-              }),
               d.jsxs("div", {
                 className: "win_text_container",
                 children: [
-                  d.jsx("div", { className: "team_name", children: e.name }),
+                  d.jsx(FitText, {
+                    className: "team_name",
+                    text: e.name,
+                    max: 28,
+                    min: 16,
+                  }),
                   d.jsx("div", {
                     className: "win_caption",
                     children: "WINS THE ROUND!",
@@ -20368,33 +20427,18 @@ const jC = (e) => {
     var Z1, N1;
     const { bomb: t, match: n, map: r, phase: i, players: s } = e,
       [o, l] = m.useState(null),
-      [c, f] = m.useState(!1),
-      [g, w] = m.useState(!1),
-      _ = Fn("display_settings");
-    (m.useEffect(() => {
-      let J = null;
-      return (
-        i.phase === "live" && !(_ != null && _.disable_compact_matchbar)
-          ? (J = setTimeout(() => w(!0), 1e4))
-          : (i.phase === "freezetime" ||
-              (_ != null && _.disable_compact_matchbar)) &&
-            w(!1),
-        () => {
-          J && clearTimeout(J);
-        }
-      );
-    }, [i.phase, _ == null ? void 0 : _.disable_compact_matchbar]),
-      y5(
-        "roundEnd",
-        (J) => {
-          (l(J.winner),
-            f(!0),
-            setTimeout(() => {
-              f(!1);
-            }, 5e3));
-        },
-        [],
-      ));
+      [c, f] = m.useState(!1);
+    y5(
+      "roundEnd",
+      (J) => {
+        (l(J.winner),
+          f(!0),
+          setTimeout(() => {
+            f(!1);
+          }, 5e3));
+      },
+      [],
+    );
     const S = bC(i.phase_ends_in),
       E = r.team_ct.orientation === "left" ? r.team_ct : r.team_t,
       x = r.team_ct.orientation === "left" ? r.team_t : r.team_ct,
@@ -20436,14 +20480,12 @@ const jC = (e) => {
       children: [
         d.jsxs("div", {
           id: "matchbar",
-          className: g ? "compact" : "",
           children: [
             d.jsx(W7, {
               team: E,
               match: n,
               orientation: "left",
               timer: E.side === "CT" ? w1 : I,
-              compact: g,
             }),
             d.jsxs("div", {
               id: "timer",
@@ -20480,7 +20522,6 @@ const jC = (e) => {
               match: n,
               orientation: "right",
               timer: x.side === "CT" ? w1 : I,
-              compact: g,
             }),
             d.jsx(kC, { side: E.side === "T" ? "left" : "right" }),
             d.jsx(q7, { timer: E.side === "CT" ? w1 : I, side: "left" }),
@@ -20967,37 +21008,6 @@ const oh = (e) => {
       );
     });
   },
-  uh = (e) =>
-    m.createElement(
-      "svg",
-      {
-        width: "800px",
-        height: "800px",
-        viewBox: "0 -14.61 213.12 213.12",
-        xmlns: "http://www.w3.org/2000/svg",
-        ...e,
-      },
-      m.createElement(
-        "defs",
-        null,
-        m.createElement("style", null, ".cls-1{fill:#ffffff;}"),
-      ),
-      m.createElement(
-        "g",
-        { id: "Layer_2", "data-name": "Layer 2" },
-        m.createElement(
-          "g",
-          { id: "Layer_1-2", "data-name": "Layer 1" },
-          m.createElement("path", {
-            d: "M61.92,15.94c4.87-5,9.49-9.22,15.35-11.9C84.2.88,91.41-.68,99,.28a34.79,34.79,0,0,1,9,2.4,77.15,77.15,0,0,1,22.32,14.89c13.18-8.54,27.05-8.49,39.81-.9,12.46,7.41,21.49,18.21,20.36,34.46,2.76,1.45,5.23,2.83,7.78,4.06,5.65,2.75,9.57,7.23,12.49,12.61,3.07,5.67,3,11.66.55,17.45-1.59,3.84-2.94,7.45-.86,11.48a3.68,3.68,0,0,1,.39,1.66c-.21,8.61-.81,17.14-4.83,25a29.3,29.3,0,0,1-16.71,14.53c-.15,1.71-.37,3.35-.43,5-.34,8.27-3.43,15.58-7.94,22.36a27,27,0,0,1-19,12.08c-9.19,1.42-18.3,1.12-26.83-3.32l-4.17-2.13a53.1,53.1,0,0,0-4.75,3.31c-8.56,7.39-18.08,10.34-29.43,7.74-8.32-1.91-15.81-5-21.64-11.08-6.23-.37-12.21-.69-18.18-1.07-6.79-.42-12.67-3.36-18.33-6.82-6.27-3.83-9.17-10.07-11.47-16.61a73.71,73.71,0,0,1-4.4-25.79,62.39,62.39,0,0,0-7.34-4,17,17,0,0,1-8.46-7C2.46,103.4-.49,95.69.07,87.06a16.19,16.19,0,0,1,1.45-6.64c3.57-6.48,6.29-13.59,12.2-18.54C16,60,16.27,57.85,15.91,55c-1.72-13.6,4.41-23.95,14.64-31.93a34.57,34.57,0,0,1,25-7.44C57.5,15.82,59.5,15.83,61.92,15.94ZM129,27.07c-1.41-.79-2.66-1.45-3.87-2.18-5.87-3.54-11.55-7.47-17.63-10.6a30.11,30.11,0,0,0-38.34,8.86c-2.86,3.84-5.9,5.16-10.22,4.08a27.4,27.4,0,0,0-13.59.47c-12.07,3.13-20.58,11.42-19,24.56a47.22,47.22,0,0,1,.28,8.57c-.21,3.17-1,6.15-4.48,7.63-5.48,2.36-8.07,7.35-9.77,12.46-3.14,9.47.32,22.36,9.54,27a43.83,43.83,0,0,1,6.68,3.87c2.29,1.71,4.77,3.93,3.92,7.06-1.75,6.49.43,12.54,1.74,18.59a26.5,26.5,0,0,0,11.61,17.34,33.26,33.26,0,0,0,25.41,5c5-1,8.69.12,12,4.21a20.43,20.43,0,0,0,8.16,6c10.88,4.14,21.34,3.83,30.39-4.68.84-.79,1.7-1.54,2.59-2.27,4.73-3.91,6.09-4.05,11.5-1.16,1.26.67,2.45,1.46,3.73,2.1,8.51,4.3,17.16,3.71,25.8.47a17.06,17.06,0,0,0,9.95-10.07c2.39-5.9,4-11.93,3.45-18.39-.33-3.9,1.62-6.55,5-8.23,2-1,4.2-1.81,6.27-2.8,6.8-3.24,10.58-8.62,10.84-16.18.17-4.84.47-9.69-.94-14.49-1-3.31-1.15-6.87.83-10,3.55-5.59,1.51-10.28-2-14.92A33.89,33.89,0,0,0,189.1,61c-5.25-3.25-8.14-7.84-8.32-14.1-.29-9.66-6.29-16.21-13.64-20.63-10.54-6.33-22-7.55-33.44-1.13A40.35,40.35,0,0,1,129,27.07Z",
-          }),
-          m.createElement("path", {
-            className: "cls-1",
-            d: "M129,27.07a40.35,40.35,0,0,0,4.73-2c11.39-6.42,22.9-5.2,33.44,1.13,7.35,4.42,13.35,11,13.64,20.63.18,6.26,3.07,10.85,8.32,14.1a33.89,33.89,0,0,1,9.74,8.31c3.48,4.64,5.52,9.33,2,14.92-2,3.11-1.81,6.67-.83,10,1.41,4.8,1.11,9.65.94,14.49-.26,7.56-4,12.94-10.84,16.18-2.07,1-4.23,1.77-6.27,2.8-3.35,1.68-5.3,4.33-5,8.23.55,6.46-1.06,12.49-3.45,18.39a17.06,17.06,0,0,1-9.95,10.07c-8.64,3.24-17.29,3.83-25.8-.47-1.28-.64-2.47-1.43-3.73-2.1-5.41-2.89-6.77-2.75-11.5,1.16-.89.73-1.75,1.48-2.59,2.27-9,8.51-19.51,8.82-30.39,4.68a20.43,20.43,0,0,1-8.16-6c-3.33-4.09-7-5.19-12-4.21a33.26,33.26,0,0,1-25.41-5,26.5,26.5,0,0,1-11.61-17.34c-1.31-6-3.49-12.1-1.74-18.59.85-3.13-1.63-5.35-3.92-7.06a43.83,43.83,0,0,0-6.68-3.87c-9.22-4.59-12.68-17.48-9.54-26.95,1.7-5.11,4.29-10.1,9.77-12.46C25.56,67,26.39,64,26.6,60.83a47.22,47.22,0,0,0-.28-8.57c-1.58-13.14,6.93-21.43,19-24.56a27.4,27.4,0,0,1,13.59-.47c4.32,1.08,7.36-.24,10.22-4.08a30.11,30.11,0,0,1,38.34-8.86c6.08,3.13,11.76,7.06,17.63,10.6C126.31,25.62,127.56,26.28,129,27.07Z",
-          }),
-        ),
-      ),
-    ),
   ch = (e) =>
     m.createElement(
       "svg",
@@ -21049,7 +21059,7 @@ const oh = (e) => {
           style: { width: J3.smokeSize, height: J3.smokeSize },
           children: [
             d.jsx("div", { className: "explode-point" }),
-            d.jsx("div", { className: "background", children: d.jsx(uh, {}) }),
+            d.jsx("div", { className: "background" }),
           ],
         }),
       });
@@ -21502,162 +21512,6 @@ const Eh = () => {
     );
   },
   Lh = n1.memo(Eh);
-const Sh = "" + new URL("de_ancient-43ae33ae.png", import.meta.url).href,
-  kh = "" + new URL("de_anubis-6514829b.png", import.meta.url).href,
-  Rh = "" + new URL("de_dust2-542d56ad.png", import.meta.url).href,
-  Mh = "" + new URL("de_inferno-84a6e857.png", import.meta.url).href,
-  Nh = "" + new URL("de_mirage-9742e5e5.png", import.meta.url).href,
-  Th = "" + new URL("de_nuke-9f76977c.png", import.meta.url).href,
-  Fh = "" + new URL("de_overpass-a21ce7f0.png", import.meta.url).href,
-  bh = "" + new URL("de_train-67fbe404.png", import.meta.url).href,
-  jh = "" + new URL("de_vertigo-a1b19e07.png", import.meta.url).href,
-  Ah = "" + new URL("de_cache-6cd87872.png", import.meta.url).href,
-  Bh = {
-    de_ancient: Sh,
-    de_anubis: kh,
-    de_dust2: Rh,
-    de_inferno: Mh,
-    de_mirage: Nh,
-    de_nuke: Th,
-    de_overpass: Fh,
-    de_train: bh,
-    de_vertigo: jh,
-    de_cache: Ah,
-  },
-  Ph = ({ veto: e, teams: t, active: n }) => {
-    const r = Bh[e.mapName] ?? "",
-      i = t.find((c) => c.id === e.teamId),
-      s = t.find((c) => c.id === e.winner),
-      o = Object.values(e.score || {}).sort((c, f) => f - c),
-      l = o.length === 2 ? `${o[0]}:${o[1]}` : "-:-";
-    return d.jsxs("div", {
-      className: `veto_container ${n ? "active" : ""}`,
-      children: [
-        d.jsxs("div", {
-          className: "map_image_container",
-          children: [
-            d.jsx("img", {
-              src: r,
-              alt: e.mapName,
-              className: "map_background",
-            }),
-            d.jsx("div", { className: "map_overlay" }),
-          ],
-        }),
-        d.jsxs("div", {
-          className: "veto_content",
-          children: [
-            d.jsx("div", {
-              className: "veto_map_name",
-              children: e.mapName.replace("de_", "").toUpperCase(),
-            }),
-            d.jsxs("div", {
-              className: "veto_details",
-              children: [
-                d.jsxs("div", {
-                  className: "veto_picker",
-                  children: [
-                    d.jsx("div", { className: "label", children: "PICKED BY" }),
-                    d.jsx("div", {
-                      className: "team_info",
-                      children: i
-                        ? d.jsx(d.Fragment, {
-                            children: d.jsx(x5, {
-                              team: i,
-                              height: 24,
-                              width: 24,
-                            }),
-                          })
-                        : d.jsx("span", { children: "DECIDER" }),
-                    }),
-                  ],
-                }),
-                n
-                  ? d.jsx("div", {
-                      className: "active_indicator",
-                      children: d.jsx("span", {
-                        children: "CURRENTLY PLAYING",
-                      }),
-                    })
-                  : d.jsxs(d.Fragment, {
-                      children: [
-                        d.jsxs("div", {
-                          className: "veto_winner",
-                          children: [
-                            d.jsx("div", {
-                              className: "label",
-                              children: "WINNER",
-                            }),
-                            d.jsx("div", {
-                              className: "team_info",
-                              children: s
-                                ? d.jsx(d.Fragment, {
-                                    children: d.jsx(x5, {
-                                      team: s,
-                                      height: 24,
-                                      width: 24,
-                                    }),
-                                  })
-                                : d.jsx("span", { children: "TBD" }),
-                            }),
-                          ],
-                        }),
-                        d.jsxs("div", {
-                          className: "veto_score",
-                          children: [
-                            d.jsx("div", {
-                              className: "label",
-                              children: "SCORE",
-                            }),
-                            d.jsx("div", {
-                              className: "score_value",
-                              children: l,
-                            }),
-                          ],
-                        }),
-                      ],
-                    }),
-              ],
-            }),
-          ],
-        }),
-      ],
-    });
-  },
-  Ih = ({ match: e, teams: t, isFreezetime: n, map: r }) => {
-    if (!e || !e.vetos.length) return null;
-    const i = e.vetos.filter((s) => s.type !== "ban" && s.mapName);
-    return i.length === 0
-      ? null
-      : d.jsxs("div", {
-          className: `map_series_container ${n ? "show" : "hide"}`,
-          children: [
-            d.jsxs("div", {
-              className: "series_header",
-              children: [
-                d.jsx("div", {
-                  className: "series_title",
-                  children: "MAP SERIES",
-                }),
-                d.jsx("div", {
-                  className: "series_type",
-                  children: e.matchType.toUpperCase(),
-                }),
-              ],
-            }),
-            d.jsx("div", {
-              className: "veto_list",
-              children: i.map((s) =>
-                d.jsx(
-                  Ph,
-                  { veto: s, teams: t, active: r.name.includes(s.mapName) },
-                  `${e.id}${s.mapName}${s.teamId}${s.side}`,
-                ),
-              ),
-            }),
-          ],
-        });
-  };
 const Oh = ({ phase: e }) =>
     d.jsx("div", {
       id: "pause",
@@ -21693,10 +21547,6 @@ const Oh = ({ phase: e }) =>
         d.jsxs("div", {
           className: "timeout-header",
           children: [
-            d.jsx("div", {
-              className: "team-logo-container",
-              children: d.jsx(x5, { team: r, height: 80, width: 80 }),
-            }),
             d.jsxs("div", {
               className: "timeout-info",
               children: [
@@ -21722,21 +21572,6 @@ const Oh = ({ phase: e }) =>
       ],
     });
   };
-const Uh = ({ leftSide: e, rightSide: t, leftAlive: n, rightAlive: r }) =>
-  d.jsxs("div", {
-    className: "players_alive",
-    children: [
-      d.jsx("div", {
-        className: `team_panel left ${e}`,
-        children: d.jsx("div", { className: `team_counter ${e}`, children: n }),
-      }),
-      d.jsx("div", { className: "vs_counter", children: "VS" }),
-      d.jsx("div", {
-        className: `team_panel right ${t}`,
-        children: d.jsx("div", { className: `team_counter ${t}`, children: r }),
-      }),
-    ],
-  });
 const e9 = (e) =>
     e
       .replace(/^(de_|cs_|gg_|ar_)/, "")
@@ -21937,50 +21772,33 @@ const e9 = (e) =>
   },
   n9 = { ct: "oklch(68.5% 0.169 237.323)", t: "oklch(82.8% 0.189 84.429)" },
   r9 = (e) => /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(e),
+  applyDisplaySettings = (f) => {
+    const g = document.documentElement,
+      w = (f?.ct_color ?? "").trim(),
+      _ = (f?.t_color ?? "").trim(),
+      sponsor = parseInt(f?.sponsor_area_height, 10);
+    (g.style.setProperty("--color-ct", r9(w) ? w : n9.ct),
+      g.style.setProperty("--color-t", r9(_) ? _ : n9.t),
+      g.style.setProperty("--radius", f?.sharp_corners ? "0" : ""),
+      g.style.setProperty(
+        "--sponsor-area-height",
+        sponsor >= 0 ? `${sponsor}px` : "",
+      ));
+  },
   Vh = ({ game: e, match: t }) => {
     const [n, r] = m.useState(!1);
     (Q3("toggleActive", () => {
       r((f) => !f);
     }),
-      wi(
-        "display_settings",
-        (f) => {
-          var S, E;
-          const g = document.documentElement,
-            w =
-              ((S = f == null ? void 0 : f.ct_color) == null
-                ? void 0
-                : S.trim()) || "",
-            _ =
-              ((E = f == null ? void 0 : f.t_color) == null
-                ? void 0
-                : E.trim()) || "";
-          (g.style.setProperty("--color-ct", r9(w) ? w : n9.ct),
-            g.style.setProperty("--color-t", r9(_) ? _ : n9.t),
-            g.style.setProperty(
-              "--radius",
-              f != null && f.sharp_corners ? "0" : "",
-            ));
-        },
-        [],
-      ));
+      wi("display_settings", applyDisplaySettings, []));
     const i =
         e.map.team_ct.orientation === "left" ? e.map.team_ct : e.map.team_t,
       s = e.map.team_ct.orientation === "left" ? e.map.team_t : e.map.team_ct,
       o = e.players.filter((f) => f.team.side === i.side),
-      l = e.players.filter((f) => f.team.side === s.side),
-      c =
-        (e.round && e.round.phase === "freezetime") ||
-        e.phase_countdowns.phase === "freezetime";
+      l = e.players.filter((f) => f.team.side === s.side);
     return d.jsxs("div", {
       className: `layout ${n ? "hidden" : ""}`,
       children: [
-        d.jsx(Uh, {
-          leftSide: i.side,
-          rightSide: s.side,
-          leftAlive: o.filter((f) => f.state.health > 0).length,
-          rightAlive: l.filter((f) => f.state.health > 0).length,
-        }),
         d.jsx(Lh, {}),
         d.jsx(yh, { match: t, map: e.map, game: e }),
         d.jsx(AC, {
@@ -21995,9 +21813,28 @@ const e9 = (e) =>
         d.jsx(BC, { player: e.player }),
         d.jsx(H7, { team: i, players: o, side: "left", current: e.player }),
         d.jsx(H7, { team: s, players: l, side: "right", current: e.player }),
-        d.jsx(Ih, { teams: [i, s], match: t, isFreezetime: c, map: e.map }),
         d.jsx(zh, { game: e, match: t }),
       ],
+    });
+  },
+  viewportSquare = () => Math.min(window.innerWidth, window.innerHeight),
+  RadarView = ({ game: e }) => {
+    const [size, setSize] = m.useState(viewportSquare);
+    (wi("display_settings", applyDisplaySettings, []),
+      m.useEffect(() => {
+        const onResize = () => setSize(viewportSquare());
+        return (
+          window.addEventListener("resize", onResize),
+          () => window.removeEventListener("resize", onResize)
+        );
+      }, []));
+    return d.jsx("div", {
+      className: "radar-view",
+      children: d.jsx("div", {
+        className: "radar-view-map",
+        style: { width: size, height: size },
+        children: d.jsx(vh, { radarSize: size, game: e }),
+      }),
     });
   };
 function Hh() {
@@ -22066,7 +21903,13 @@ function Hh() {
       },
       [],
     ),
-    e ? d.jsx(Ta, { children: d.jsx(Vh, { game: e, match: n }) }) : null
+    e
+      ? d.jsx(Ta, {
+          children: isRadarView
+            ? d.jsx(RadarView, { game: e })
+            : d.jsx(Vh, { game: e, match: n }),
+        })
+      : null
   );
 }
 var Ts = { exports: {} },

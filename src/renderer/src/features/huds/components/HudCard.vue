@@ -28,7 +28,11 @@ const buildUrl = (url: string, variant?: string): string => {
 
 const launchHud = (url: string, variant?: string) => {
   const finalUrl = buildUrl(url, variant);
-  if (window.electron?.ipcRenderer) {
+  // The radar view goes on a second monitor; launching it as the overlay
+  // would close the running HUD overlay (only one is allowed).
+  if (variant === 'radar' && window.api?.openExternal) {
+    window.api.openExternal(finalUrl);
+  } else if (window.electron?.ipcRenderer) {
     window.electron.ipcRenderer.send('open-hud', finalUrl);
   } else {
     window.open(finalUrl, '_blank');
