@@ -9387,6 +9387,8 @@ var wa = (e, t, n, r) => {
         this.last && this.last.map.name !== t.map.name && (this.damage = []);
         let S = t.map.round + 1;
         t.round && t.round.phase === "over" && (S = t.map.round);
+        // map.round already counts a round that is over, so its damage counts too.
+        const roundsDone = t.round && t.round.phase === "over" ? S : S - 1;
         let E = this.damage.find((N) => N.round === S);
         (E || ((E = { round: S, players: [] }), this.damage.push(E)),
           ((t.map.round === 0 && t.phase_countdowns.phase === "freezetime") ||
@@ -9399,7 +9401,7 @@ var wa = (e, t, n, r) => {
         for (const N of f) {
           const { current: j, damage: O } = this;
           if (!j) continue;
-          const I = O.filter((N1) => N1.round < S);
+          const I = O.filter((N1) => N1.round <= roundsDone);
           if (I.length === 0) continue;
           const Z1 =
             I.map((N1) => {
