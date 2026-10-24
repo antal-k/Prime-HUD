@@ -32,10 +32,9 @@ const emit = defineEmits<{
 const isOpen = ref(false);
 const searchQuery = ref('');
 
-const selectedLabel = computed(() => {
-  const selected = props.options.find(opt => opt.value === props.modelValue);
-  return selected?.label ?? '';
-});
+const selectedOption = computed(() => props.options.find(opt => opt.value === props.modelValue));
+
+const selectedLabel = computed(() => selectedOption.value?.label ?? '');
 
 const inputDisplayValue = computed(() => {
   return isOpen.value ? searchQuery.value : selectedLabel.value;
@@ -87,7 +86,7 @@ const handleClear = () => {
           disabled && 'opacity-50 cursor-not-allowed',
         ]"
       >
-        <option v-if="placeholder || !modelValue" value="">{{ placeholder || 'Select' }}</option>
+        <option v-if="placeholder || (!modelValue && !selectedOption)" value="">{{ placeholder || 'Select' }}</option>
         <option v-for="opt in options" :key="opt.value" :value="opt.value" :disabled="opt.disabled">
           {{ opt.label }}
         </option>
