@@ -33,7 +33,7 @@ onUnmounted(() => {
 });
 
 function openReleasesPage() {
-  window.api.openExternal('https://github.com/JohnTimmermann/JTs-Hud-Manager/releases/latest')
+  window.api.openExternal('https://github.com/antal-k/Prime-HUD/releases/latest')
 }
 
 function openDiscord() {
