@@ -10,6 +10,7 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,knowledgebase.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!{.github,.worktrees,tools}/**'
   - 'resources/default-hud/**/*'
 protocols:
   name: jtshudhmanager
@@ -24,7 +25,11 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
-  entitlementsInherit: entitlements.mac.plist
+  # No Apple Developer certificate: ad-hoc signing, without which Apple Silicon
+  # refuses to start the app at all. Ad-hoc signatures cannot use the hardened runtime.
+  identity: '-'
+  hardenedRuntime: false
+  entitlementsInherit: resources/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
@@ -32,18 +37,17 @@ mac:
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: ${name}-${version}-${arch}.${ext}
 linux:
   target:
     - AppImage
-    - snap
     - deb
   maintainer: electronjs.org
   category: Utility
 appImage:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: ${name}-${version}-${arch}.${ext}
 npmRebuild: false
 publish:
   provider: github
-  owner: JohnTimmermann
-  repo: JTs-Hud-Manager
+  owner: antal-k
+  repo: Prime-HUD
